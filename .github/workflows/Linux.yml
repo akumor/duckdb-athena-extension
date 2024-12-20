@@ -7,8 +7,6 @@ defaults:
   run:
     shell: bash
 
-# TODO: Add rust, checkout duckdb_athena_rust/duckdb
-
 jobs:
   linux:
     name: Linux Release
@@ -65,20 +63,15 @@ jobs:
           unixodbc-dev \
           unzip \
           wget \
-          zip
+          zip \
+          rustfmt \
+          rust-clippy
 
     - name: Install required ubuntu packages
       if: ${{ matrix.arch == 'linux_amd64_gcc4' }}
       run: |
         yum install -y centos-release-scl llvm-toolset-7
         echo /opt/rh/llvm-toolset-7/root/usr/bin >> $GITHUB_PATH
-
-    - name: Install latest nightly rust toolchain
-      uses: actions-rs/toolchain@v1
-      with:
-          toolchain: nightly
-          override: true
-          components: rustfmt, clippy
 
     - name: Install Git 2.18.5
       if: ${{ matrix.arch == 'linux_amd64' || matrix.arch == 'linux_arm64' }}
