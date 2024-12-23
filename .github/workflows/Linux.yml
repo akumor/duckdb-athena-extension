@@ -123,28 +123,28 @@ jobs:
         path: |
           build/release/extension/duckdb-athena-extension/athena.duckdb_extension
 
-    - name: configure aws credentials
-      uses: aws-actions/configure-aws-credentials@v1
-      with:
-        role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
-        aws-region: ${{ secrets.S3_REGION }}
+    #- name: configure aws credentials
+    #  uses: aws-actions/configure-aws-credentials@v1
+    #  with:
+    #    role-to-assume: ${{ secrets.OIDC_ROLE_ARN }}
+    #    aws-region: ${{ secrets.S3_REGION }}
 
-    - name: Deploy
-      env:
-        BUCKET_NAME: ${{ secrets.S3_BUCKET }}
-      run: |
-        git config --global --add safe.directory '*'
-        cd duckdb
-        git fetch --tags
-        export DUCKDB_VERSION=`git tag --points-at HEAD`
-        export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
-        cd ..
-        if [[ "$BUCKET_NAME" == "" ]] ; then
-          echo 'No bucket set, skipping'
-        elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
-          python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh athena ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
-        elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
-          python3 -m pip install pip awscli
-          ./scripts/extension-upload.sh athena `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
-        fi
+    #- name: Deploy
+    #  env:
+    #    BUCKET_NAME: ${{ secrets.S3_BUCKET }}
+    #  run: |
+    #    git config --global --add safe.directory '*'
+    #    cd duckdb
+    #    git fetch --tags
+    #    export DUCKDB_VERSION=`git tag --points-at HEAD`
+    #    export DUCKDB_VERSION=${DUCKDB_VERSION:=`git log -1 --format=%h`}
+    #    cd ..
+    #    if [[ "$BUCKET_NAME" == "" ]] ; then
+    #      echo 'No bucket set, skipping'
+    #    elif [[ "$GITHUB_REF" =~ ^(refs/tags/v.+)$ ]] ; then
+    #      python3 -m pip install pip awscli
+    #      ./scripts/extension-upload.sh athena ${{ github.ref_name }} $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME true
+    #    elif [[ "$GITHUB_REF" =~ ^(refs/heads/main)$ ]] ; then
+    #      python3 -m pip install pip awscli
+    #      ./scripts/extension-upload.sh athena `git log -1 --format=%h` $DUCKDB_VERSION ${{matrix.arch}} $BUCKET_NAME false
+    #    fi
