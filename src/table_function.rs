@@ -2,10 +2,7 @@ use anyhow::{anyhow, Result};
 use aws_sdk_athena::model::ResultSetMetadata;
 use aws_sdk_athena::types::SdkError;
 use aws_sdk_athena::{error::GetQueryResultsError, model::Row};
-use aws_sdk_glue::model::Logical;
 use futures::{executor::block_on, Stream};
-use std::os::fd::IntoRawFd;
-use std::ptr::null;
 use std::{
     ffi::{c_void, CStr, CString},
     os::raw::c_char,
@@ -29,6 +26,7 @@ use duckdb_athena_rust::{
     duckdb_bind_info, duckdb_data_chunk, duckdb_free, duckdb_function_info, duckdb_init_info,
     malloc_struct,
 };
+use libduckdb_sys as ffi;
 use duckdb_athena_rust::{DataChunk, FunctionInfo, LogicalType, LogicalTypeId};
 
 use tokio::{runtime::Runtime, time::Duration};
@@ -64,7 +62,7 @@ unsafe extern "C" fn drop_scan_bind_data_c(v: *mut c_void) {
     let actual = v.cast::<ScanBindData>();
     drop(CString::from_raw((*actual).tablename.cast()));
     drop(CString::from_raw((*actual).output_location.cast()));
-    drop((*actual).limit);
+    let _ = (*actual).limit;
     duckdb_free(v);
 }
 
@@ -301,6 +299,10 @@ unsafe extern "C" fn read_athena_bind(bind_info: duckdb_bind_info) {
     }
 }
 
+unsafe extern "C" fn duckdb_free_wrapper(ptr: *mut std::ffi::c_void) {
+    ffi::duckdb_free(ptr); // Calls the original function
+}
+
 /// # Safety
 ///
 /// .
@@ -396,7 +398,7 @@ unsafe extern "C" fn read_athena_init(info: duckdb_init_info) {
                 let init_data = Box::new(ScanInitData::new(Box::new(ResultStream::new(Box::new(
                     stream,
                 )))));
-                info.set_init_data(Box::into_raw(init_data).cast(), Some(duckdb_free));
+                info.set_init_data(Box::into_raw(init_data).cast(), Some(duckdb_free_wrapper));
                 break;
             }
         }
