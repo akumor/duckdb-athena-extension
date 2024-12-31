@@ -1,8 +1,23 @@
 PROJ_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
-# Configuration of extension
-EXT_NAME=athena
-EXT_CONFIG=${PROJ_DIR}extension_config.cmake
+# TODO: these values are currently duplicated in lib.rs. There's a PR open in duckdb-rs that fixes this
+EXTENSION_NAME=athena
+MINIMUM_DUCKDB_VERSION=v0.0.1
 
-# Include the Makefile from extension-ci-tools
-include extension-ci-tools/makefiles/duckdb_extension.Makefile
+all: configure debug
+
+# Include makefiles from DuckDB
+include extension-ci-tools/makefiles/c_api_extensions/base.Makefile
+include extension-ci-tools/makefiles/c_api_extensions/rust.Makefile
+
+configure: venv platform extension_version
+
+debug: build_extension_library_debug build_extension_with_metadata_debug
+release: build_extension_library_release build_extension_with_metadata_release
+
+test: test_debug
+test_debug: test_extension_debug
+test_release: test_extension_release
+
+clean: clean_build clean_rust
+clean_all: clean_configure clean
