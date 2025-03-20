@@ -303,87 +303,58 @@ impl VTab for AthenaScanVTab {
     unsafe fn func(func: &FunctionInfo, output: &mut DataChunkHandle) -> Result<(), Box<dyn std::error::Error>> {
         // reimplemented read_athena
         println!("DEBUG | func Athena table function");
-
         println!("DEBUG | func | Getting init data");
         let init_info = func.get_init_data::<AthenaScanInitData>();
-        //let bind_info = func.get_bind_data::<AthenaScanBindData>();
         println!("DEBUG | func | Got init data");
 
         unsafe {
             if (*init_info).done {
                 println!("DEBUG | func | (*init_info).done = true");
                 output.set_len(0);
-            } else {
-                println!("DEBUG | func | (*init_info).done = false");
-                /* 
-                  Check if you are polling a Stream that has been dropped or moved.
-                */
-                while let item = (*(*init_info).stream).stream {
-                    match item {
-                        Ok(result) => println!("Received result: {:?}", result),
-                        Err(err) => eprintln!("Error in stream: {:?}", err),
-                    }
-                }
-                println!("DEBUG | func | (*init_info).stream = {:?}", (*init_info).stream);
-                // Cannot print this because `(*(*init_info).stream).stream` is does not implement Debug
-                //`dyn Stream<Item = Result<GetQueryResultsOutput, SdkError<GetQueryResultsError>>>` doesn't implement `Debug`
-                //println!("DEBUG | func | (*(*init_info).stream).stream = {:?}", (*(*init_info).stream).stream);
-                /*
-                let jktest = match crate::RUNTIME
-                .block_on(async { futures::StreamExt::next(&mut (*(*init_info).stream).stream).await })
-                {
-                    Some(Ok(b)) => Some(b),
-                    Some(Err(e)) => {
-                        func.set_error(e.to_string().as_str());
-                        return Ok(());
-                    }
-                    None => None,
-                };
-                */
-                let jktest = match crate::RUNTIME
-                .block_on(async { futures::StreamExt::next(&mut (*(*init_info).stream).stream).await })
-                {
-                    Some(Ok(b)) => {
-                        println!("DEBUG | func | jktest stream before Some(b)");
-                        Some(b)
-                    }
-                    Some(Err(e)) => {
-                        println!("DEBUG | func | jktest stream in Some(Err(e)) = {:?}", e.to_string().as_str());
-                        func.set_error(e.to_string().as_str());
-                        return Ok(());
-                    }
-                    None => None,
-                };
-                println!("DEBUG | func | made it past the jktest line -_- ");
-                // END DEBUG
-                let batch = match crate::RUNTIME
-                    .block_on(async { futures::StreamExt::next(&mut (*(*init_info).stream).stream).await })
-                {
-                    Some(Ok(b)) => Some(b),
-                    Some(Err(e)) => {
-                        func.set_error(e.to_string().as_str());
-                        return Ok(());
-                    }
-                    None => None,
-                };
-                println!("DEBUG | func | Got batch");
-
-                if let Some(b) = batch {
-                    let mut rows = b.result_set().unwrap().rows().unwrap();
-                    // Athena returns the header in the results 0_o but only in the first page
-                    if (*init_info).pagination_index == 0 {
-                        rows = &rows[1..];
-                    }
-                    let metadata = b.result_set().unwrap().result_set_metadata().unwrap();
-                    result_set_to_duckdb_data_chunk(rows, metadata, output)
-                        .expect("Couldn't write results");
-                } else {
-                    (*init_info).done = true;
-                    output.set_len(0);
-                }
-            
-                (*init_info).pagination_index += 1;
+                return Ok(());
             }
+
+            // First check if the stream pointer is null
+            let stream_ptr = (*init_info).stream;
+            if stream_ptr.is_null() {
+                func.set_error("Stream pointer is null");
+                return Ok(());
+            }
+
+            // Create a temporary Box to safely handle the stream
+            let mut stream_box = Box::from_raw(stream_ptr);
+            let batch = match crate::RUNTIME.block_on(async {
+                let result = futures::StreamExt::next(&mut stream_box.stream).await;
+                result
+            }) {
+                Some(Ok(b)) => Some(b),
+                Some(Err(e)) => {
+                    // Don't forget to forget the Box so we don't drop the stream
+                    Box::into_raw(stream_box);
+                    func.set_error(e.to_string().as_str());
+                    return Ok(());
+                }
+                None => None,
+            };
+
+            // Don't drop the stream - convert back to raw pointer
+            Box::into_raw(stream_box);
+
+            if let Some(b) = batch {
+                let mut rows = b.result_set().unwrap().rows().unwrap();
+                // Athena returns the header in the results 0_o but only in the first page
+                if (*init_info).pagination_index == 0 {
+                    rows = &rows[1..];
+                }
+                let metadata = b.result_set().unwrap().result_set_metadata().unwrap();
+                result_set_to_duckdb_data_chunk(rows, metadata, output)
+                    .expect("Couldn't write results");
+            } else {
+                (*init_info).done = true;
+                output.set_len(0);
+            }
+        
+            (*init_info).pagination_index += 1;
         }
         println!("DEBUG | func | Done with func");
         Ok(())
